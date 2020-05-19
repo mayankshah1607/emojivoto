@@ -11,10 +11,13 @@ import (
 	"time"
 
 	"github.com/buoyantio/emojivoto/emojivoto-voting-svc/api"
+	"github.com/buoyantio/emojivoto/emojivoto-voting-svc/cmd/options"
+	"github.com/buoyantio/emojivoto/emojivoto-voting-svc/utils/mysql"
 	"github.com/buoyantio/emojivoto/emojivoto-voting-svc/voting"
 
 	"contrib.go.opencensus.io/exporter/ocagent"
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	_ "github.com/go-sql-driver/mysql"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/trace"
@@ -25,12 +28,41 @@ var (
 	grpcPort    = os.Getenv("GRPC_PORT")
 	promPort    = os.Getenv("PROM_PORT")
 	ocagentHost = os.Getenv("OC_AGENT_HOST")
+
+	// MySQL configurations
+	mysqlPort = os.Getenv("MYSQL_PORT")
+	mysqlHost = os.Getenv("MYSQL_HOST")
+	mysqlUser = os.Getenv("MYSQL_USER")
+	mysqlPass = os.Getenv("MYSQL_PASS")
 )
 
 func main() {
+	// initialize feature options here
+	options.UseMySQL = os.Getenv("USE_MYSQL") == "ON"
 
 	if grpcPort == "" {
 		log.Fatalf("GRPC_PORT (currently [%s]) environment variable must me set to run the server.", grpcPort)
+	}
+
+	if options.UseMySQL {
+		if mysqlPort == "" {
+			mysqlPort = "3306" // default
+		}
+
+		if mysqlHost == "" {
+			log.Fatalf("MYSQL_HOST environment variable must be set to connect to an instance of MySQL server")
+		}
+
+		if err := mysql.InitDB(mysqlPort, mysqlHost, mysqlUser, mysqlPass); err != nil {
+			log.Fatal(err)
+		}
+
+		log.Println("Successfully established connection to MySQL server")
+
+		if err := mysql.InitTables(); err != nil {
+			log.Fatalf("Error creating votes table: %s", err)
+		}
+
 	}
 
 	oce, err := ocagent.NewExporter(
