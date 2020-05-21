@@ -12,8 +12,10 @@ import (
 
 	"contrib.go.opencensus.io/exporter/ocagent"
 	"github.com/buoyantio/emojivoto/emojivoto-emoji-svc/api"
+	"github.com/buoyantio/emojivoto/emojivoto-emoji-svc/cmd/options"
 	"github.com/buoyantio/emojivoto/emojivoto-emoji-svc/emoji"
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/buoyantio/emojivoto/emojivoto-emoji-svc/utils/cache"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/trace"
@@ -24,12 +26,30 @@ var (
 	grpcPort    = os.Getenv("GRPC_PORT")
 	promPort    = os.Getenv("PROM_PORT")
 	ocagentHost = os.Getenv("OC_AGENT_HOST")
+
+	redisPort     = os.Getenv("REDIS_PORT")
+	redisPassword = os.Getenv("REDIS_PASSWORD")
+	redisHost     = os.Getenv("REDIS_HOST")
 )
 
 func main() {
 
+	options.UseRedis = os.Getenv("USE_REDIS") == "ON"
+
 	if grpcPort == "" {
 		log.Fatalf("GRPC_PORT (currently [%s]) environment variable must me set to run the server.", grpcPort)
+	}
+
+	if options.UseRedis {
+		if redisPort == "" {
+			redisPort = "6379"
+		}
+		err := cache.InitCache(fmt.Sprintf("%s:%s", redisHost, redisPort),
+			redisPassword, 0, 120)
+		if err != nil {
+			log.Fatalf("Failed to initialize redis client: %s", err)
+		}
+
 	}
 
 	oce, err := ocagent.NewExporter(

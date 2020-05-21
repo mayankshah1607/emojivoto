@@ -1,19 +1,21 @@
 package emoji
 
+import (
+	"log"
+
+	"github.com/buoyantio/emojivoto/emojivoto-emoji-svc/cmd/options"
+	"github.com/buoyantio/emojivoto/emojivoto-emoji-svc/utils/cache"
+)
+
 //go:generate generateEmojiCodeMap -pkg emojivoto
 
-type Emoji struct {
-	Unicode   string `json:"unicode"`
-	Shortcode string `json:"shortcode"`
-}
-
 type AllEmoji interface {
-	WithShortcode(shortcode string) *Emoji
-	List() []*Emoji
+	WithShortcode(shortcode string) *cache.Emoji
+	List() []*cache.Emoji
 }
 
 type inMemoryAllEmoji struct {
-	emojiList []*Emoji
+	emojiList []*cache.Emoji
 }
 
 var top100Emoji = []string{
@@ -118,11 +120,11 @@ var top100Emoji = []string{
 	":poop:",
 }
 
-func (allEmoji *inMemoryAllEmoji) List() []*Emoji {
+func (allEmoji *inMemoryAllEmoji) List() []*cache.Emoji {
 	return allEmoji.emojiList
 }
 
-func (allEmoji *inMemoryAllEmoji) WithShortcode(shortcode string) *Emoji {
+func findEmoji(shortcode string, allEmoji *inMemoryAllEmoji) *cache.Emoji {
 	for _, emoji := range allEmoji.List() {
 		if emoji.Shortcode == shortcode {
 			return emoji
@@ -131,11 +133,30 @@ func (allEmoji *inMemoryAllEmoji) WithShortcode(shortcode string) *Emoji {
 	return nil
 }
 
+func (allEmoji *inMemoryAllEmoji) WithShortcode(shortcode string) *cache.Emoji {
+	var emoji *cache.Emoji
+	var err error
+
+	if options.UseRedis {
+		emoji, err = cache.Get(shortcode)
+		if err != nil { // emoji not cached
+			emoji = findEmoji(shortcode, allEmoji)
+			cache.Set(shortcode, emoji)
+		} else {
+			log.Printf("Fetched emoji %s from cache\n", shortcode)
+		}
+	} else {
+		emoji = findEmoji(shortcode, allEmoji)
+	}
+
+	return emoji
+}
+
 func NewAllEmoji() AllEmoji {
-	emojiList := make([]*Emoji, 0)
+	emojiList := make([]*cache.Emoji, 0)
 
 	for _, name := range top100Emoji {
-		e := &Emoji{
+		e := &cache.Emoji{
 			Unicode:   emojiCodeMap[name],
 			Shortcode: name,
 		}
